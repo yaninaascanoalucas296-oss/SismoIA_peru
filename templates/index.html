@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SISMO AI PERÚ · SENATI</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-vista="dashboard">
+<aside>
+  <div class="marca">
+    <svg viewBox="0 0 48 48" width="42" height="42"><path d="M24 3l18 10.5v21L24 45 6 34.5v-21z" fill="none" stroke="#fff" stroke-width="3"/><path d="M16 19c4-4 12-1 16 0M16 29c4 3 12 0 16-3" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/></svg>
+    <b>SENATI</b>
+  </div>
+  <nav id="nav">
+    <button data-v="dashboard" class="activo">▦ Dashboard</button>
+    <button data-v="analisis">◎ Análisis KNN</button>
+    <button data-v="simulador">∿ Simulador de Sismo</button>
+    <button data-v="mapa">⌖ Mapa de Eventos</button>
+    <button data-v="dataset">☰ Dataset</button>
+    <button data-v="evaluacion">▮ Evaluación del Modelo</button>
+    <button data-v="reportes">▤ Reportes</button>
+    <button data-v="ayuda">? Ayuda</button>
+  </nav>
+  <div class="pie">⌖ Huánuco · Perú</div>
+</aside>
+
+<div class="contenido">
+<header>
+  <svg class="onda" viewBox="0 0 80 40" width="70"><polyline points="0,20 12,20 18,4 26,36 34,10 42,28 48,20 80,20" fill="none" stroke="#ff5a5a" stroke-width="2.5"/></svg>
+  <div>
+    <h1>SISMO <span>AI</span> PERÚ</h1>
+    <p>Sistema Inteligente de Análisis y Estimación Sísmica con KNN</p>
+  </div>
+  <div class="monitoreo"><b>Monitoreo Sísmico</b><small><i></i> Datos simulados · uso educativo</small></div>
+</header>
+<div class="aviso">Proyecto educativo de Machine Learning: no predice la fecha, ubicación ni magnitud de futuros terremotos y no es una alerta ni una herramienta oficial de seguridad.</div>
+
+<main class="rejilla">
+  <!-- Tarjetas resumen -->
+  <section class="stat s3" data-v="dashboard"><div class="ico">∿</div><div><small>Total de registros</small><strong id="stReg">–</strong><em id="stEv"></em></div></section>
+  <section class="stat s3" data-v="dashboard"><div class="ico">▲</div><div><small>Magnitud promedio</small><strong id="stMag">–</strong><em>Mw</em></div></section>
+  <section class="stat s3" data-v="dashboard"><div class="ico">⤓</div><div><small>Profundidad promedio</small><strong id="stProf">–</strong><em>km</em></div></section>
+  <section class="stat s3" data-v="dashboard"><div class="ico">⌖</div><div><small>Regiones analizadas</small><strong id="stReg2">–</strong><em>a nivel nacional</em></div></section>
+
+  <!-- Mapa -->
+  <section class="card s5" id="cardMapa" data-v="dashboard mapa">
+    <h2>Mapa de Eventos Sísmicos del Perú</h2>
+    <div id="map"></div>
+    <div class="leyenda"><b>Magnitud (Mw)</b>
+      <span><i style="background:#f7e04a"></i>&lt; 4.0 (Baja)</span>
+      <span><i style="background:#f59e3b"></i>4.0 – 5.9 (Moderada)</span>
+      <span><i style="background:#e5534b"></i>≥ 6.0 (Alta)</span></div>
+  </section>
+
+  <!-- Simulador -->
+  <section class="card s7" id="cardSim" data-v="dashboard simulador">
+    <h2>Simulador de Intensidad Sísmica (KNN)</h2>
+    <div class="sim">
+      <div class="campos">
+        <label>Departamento
+          <select id="dep">{% for d in deptos %}<option {% if d=='Huánuco' %}selected{% endif %}>{{ d }}</option>{% endfor %}</select></label>
+        <label>Magnitud (Mw)<input id="mag" type="number" step="0.1" min="2" max="9.5" value="6.5"></label>
+        <label>Profundidad (km)<input id="prof" type="number" step="1" min="0" max="700" value="15"></label>
+        <label>Distancia al epicentro (km)<input id="dist" type="number" step="1" min="0" max="1500" value="20"></label>
+        <label>K (vecinos)
+          <select id="kSel">{% for k in ks %}<option value="{{ k }}">K = {{ k }}{% if k==k_optimo %} (óptimo){% endif %}</option>{% endfor %}</select></label>
+        <button id="btnEst" class="azul">▶ Estimar Intensidad</button>
+        <div id="err" class="err"></div>
+      </div>
+      <div class="resultado">
+        <h3>Resultado del Modelo</h3>
+        <div id="resCaja" class="caja vacia"><small>Intensidad estimada:</small><b>—</b></div>
+        <h4>Probabilidad por clase</h4>
+        <div id="probs"></div>
+        <p id="votos" class="nota"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Vecinos y escenarios (vista simulador) -->
+  <section class="card s12" data-v="simulador">
+    <h2>Votación de los vecinos más cercanos</h2>
+    <div id="vecinos"><p class="nota">Ejecuta una estimación para ver los K vecinos del conjunto de entrenamiento y sus votos.</p></div>
+    <h3 class="sub">Escenarios hipotéticos (clic para cargarlos)</h3>
+    <div id="escBotones" class="botones"></div>
+  </section>
+
+  <!-- Gráficos -->
+  <section class="card s3" data-v="dashboard analisis">
+    <h2>Distribución de Eventos por Magnitud</h2>
+    <div class="donut-box"><div id="donut" class="donut"><span id="donutTxt"></span></div><ul id="donutLeyenda" class="ley"></ul></div>
+  </section>
+  <section class="card s3" data-v="dashboard analisis">
+    <h2>Eventos por Departamento (Top 5)</h2>
+    <div id="top5" class="barras"></div>
+  </section>
+  <section class="card s3" id="cardMatriz" data-v="dashboard evaluacion">
+    <h2>Matriz de Confusión (KNN)</h2>
+    <div id="matriz"></div>
+  </section>
+  <section class="card s3" id="cardRend" data-v="dashboard evaluacion">
+    <h2>Rendimiento del Modelo</h2>
+    <ul id="rend" class="rend"></ul>
+    <p class="nota" id="kNota"></p>
+  </section>
+
+  <!-- Análisis KNN -->
+  <section class="card s6" data-v="analisis">
+    <h2>Pipeline KNN</h2>
+    <ol class="pasos">
+      <li><b>Datos:</b> Pandas/NumPy · limpieza de nulos, duplicados y rangos inválidos.</li>
+      <li><b>Partición 80 / 20</b> con <code>GroupShuffleSplit</code> agrupando por <code>evento_id</code> (sin fuga de información).</li>
+      <li><b>Pipeline:</b> <code>StandardScaler</code> → <code>KNeighborsClassifier</code> (distancia euclidiana).</li>
+      <li><b>Selección de K</b> (3, 5, 7, 9) con <code>GroupKFold</code> (5 pliegues) solo en entrenamiento.</li>
+      <li><b>Evaluación final</b> en prueba: exactitud, precisión, recall, F1 y matriz de confusión.</li>
+    </ol>
+    <p class="nota">Variables: magnitud (Mw) · profundidad (km) · distancia epicentral (km). Clases: I–IV (Baja) · V–VI (Moderada) · VII–XII (Fuerte), escala Mercalli modificada.</p>
+  </section>
+  <section class="card s6" data-v="analisis"><h2>Datos y partición</h2><div id="splitInfo"></div></section>
+  <section class="card s6" data-v="analisis"><h2>Histograma de magnitud (Mw)</h2><div id="hMag" class="hist"></div></section>
+  <section class="card s6" data-v="analisis"><h2>Histograma de profundidad (km)</h2><div id="hProf" class="hist"></div></section>
+  <section class="card s12" data-v="analisis"><h2>Distribución regional (eventos por departamento epicentral)</h2><div id="todos" class="barras cols2"></div></section>
+
+  <!-- Evaluación -->
+  <section class="card s6" data-v="evaluacion"><h2>Comparación de K (validación cruzada agrupada)</h2><div id="kTabla"></div></section>
+  <section class="card s6" data-v="evaluacion"><h2>Métricas por clase (prueba)</h2><div id="porClase"></div></section>
+
+  <!-- Dataset -->
+  <section class="card s12" data-v="dataset">
+    <h2>Dataset de eventos (SIMULADO · evento-localidad)</h2>
+    <div class="filtros">
+      <input id="q" placeholder="Buscar evento, localidad o departamento…">
+      <select id="fInt"><option value="">Todas las intensidades</option><option>I–IV</option><option>V–VI</option><option>VII–XII</option></select>
+      <a class="btn" href="/descargar/dataset.csv">⬇ Descargar CSV</a>
+    </div>
+    <div class="scroll"><table id="tabla"></table></div>
+    <div class="pag"><button id="prev">‹ Anterior</button><span id="pagInfo"></span><button id="next">Siguiente ›</button></div>
+    <p class="nota">Campos: evento_id, fecha, latitud, longitud, localidad, magnitud (Mw), profundidad_km, distancia_km, intensidad (Mercalli modificada agrupada). Fuentes de referencia para datos reales: IGP · CENSIS · USGS.</p>
+  </section>
+
+  <!-- Reportes -->
+  <section class="card s6" data-v="reportes">
+    <h2>Entregables</h2>
+    <div class="botones">
+      <a class="btn azul" href="/descargar/informe.pdf">⬇ Informe PDF</a>
+      <a class="btn" href="/descargar/dataset.csv">⬇ Dataset CSV</a>
+    </div>
+    <ul class="check"><li>Código fuente (ZIP)</li><li>Dataset CSV</li><li>requirements.txt</li><li>README con instrucciones</li><li>Informe PDF con evidencias y conclusiones</li></ul>
+  </section>
+  <section class="card s6" data-v="reportes"><h2>Tres escenarios hipotéticos</h2><div id="escTabla"></div></section>
+
+  <!-- Ayuda -->
+  <section class="card s12" data-v="ayuda">
+    <h2>Preguntas de sustentación</h2>
+    <div id="faq"></div>
+  </section>
+</main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
